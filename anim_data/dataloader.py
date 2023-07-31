@@ -7,8 +7,8 @@ import multiprocessing as mp
 
 
 class DataLoader:
-    def __init__(self, bvh_dir, excluded_joints=None, seed=None):
-        datafiles = glob.glob(bvh_dir + "/**/*.bvh", recursive=True)[:100]
+    def __init__(self, bvh_dir, excluded_joints=None, seed=None, min_sample_length=120):
+        datafiles = glob.glob(bvh_dir + "/**/*.bvh", recursive=True)
         self.manager = mp.Manager()
         self.pool = mp.Pool(16)
         self.data = self.manager.list()
@@ -33,6 +33,7 @@ class DataLoader:
                                                repeat(self.excluded_joints)))
 
         self.motions = list(self.motions)
+        self.motions = [m for m in self.motions if m.duration >= min_sample_length]
 
         n = 0
         for m in self.motions:
@@ -59,7 +60,7 @@ class DataLoader:
     def get_samples(self, n: int, sample_length: int):
         seeds = self.seeds.spawn(n+1)
         rng = [np.random.default_rng(s) for s in seeds]
-        idx = rng[-1].integers(len(self.data), size=n)
+        idx = rng[-1].integers(len(self.motions), size=n)
         samples = []
         for i in range(n):
             samples.append(self._random_trim(self.motions[idx[i]], sample_length, rng[i]))

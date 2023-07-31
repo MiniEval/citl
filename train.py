@@ -25,7 +25,7 @@ class DirectorTrainer:
             excluded_joints = ["LeftToe_end", "RightToe_end", "Head_end", "LeftHand_end", "RightHand_end"]
             self.p_scale = 0.02
 
-        self.data = DataLoader(dataset_path, excluded_joints)
+        self.data = DataLoader(dataset_path, excluded_joints, min_sample_length=sample_length)
 
         joints = self.data.get_hierarchy().shape[0]
         offsets = torch.tensor(self.data.motions[0].get_offsets(), dtype=torch.float32,
