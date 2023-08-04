@@ -99,7 +99,6 @@ class IntermediateEncoder(nn.Module):
 
         self.te = TemporalEmbedding(self.n_te, max_length)
         self.te_embed = nn.Linear(16, embed_size)
-
         self.blocks = nn.ModuleList([IntermediateEncoderBlock(embed_size, heads, dropout=dropout) for _ in range(layers)])
 
     def forward(self, indices, key_enc):
@@ -150,15 +149,16 @@ class Decoder(nn.Module):
         key_idx = torch.repeat_interleave(keyframes.unsqueeze(-1), key_enc.shape[-1], dim=-1)
         interm_idx = torch.repeat_interleave(interm_frames.unsqueeze(-1), interm_enc.shape[-1], dim=-1)
 
-        x = torch.cat([key_enc, interm_enc], dim=1)
-        idx = torch.cat([key_idx, interm_idx], dim=1)
-        x = torch.gather(x, 1, idx)
-
         # Reformulation FFN
-        x = self.key_ff(x)
+        key_ff = self.key_ff(key_enc)
+
+        x = torch.cat([key_ff, interm_enc], dim=1)
+        idx = torch.cat([key_idx, interm_idx], dim=1)
+        manifold = torch.empty(x.shape, dtype=torch.float32, device=x.device)
+        manifold = torch.scatter(manifold, 1, idx, x)
 
         # Stage III
-        x = self.conv_in(x.transpose(-2, -1)).transpose(-2, -1)
+        x = self.conv_in(manifold.transpose(-2, -1)).transpose(-2, -1)
         for block in self.blocks:
             x = block(x)
         x = self.conv_out(x.transpose(-2, -1)).transpose(-2, -1)
