@@ -12,3 +12,8 @@ Official Pytorch implementation of the CVPR2023 paper: [Continuous Intermediate 
 
 train.py:
 ```python train.py ["cmu"/"lafan"] [dataset path]```
+
+eval.py:
+```python eval.py ["cmu"/"lafan"] [dataset path] [ckpt]```
+
+A pre-trained CMU model can be found [here](https://drive.google.com/file/d/1T-Wus9Z1Mejo2Ywcv6WnS8dAsDEdwwlh/view?usp=sharing).
