@@ -44,7 +44,7 @@ class DataLoader:
     def _lazy_load(motions, data, i: int, exclude=None):
         if motions[i].duration == 0:
             motion = motions[i]
-            motion.load_from_data(data[i], quaternion=True, exclude=exclude)
+            motion.load_from_data(data[i], quaternion=True, exclude=exclude, step=5)
             motions[i] = motion
             data[i] = None
 
@@ -52,7 +52,7 @@ class DataLoader:
 
     @staticmethod
     def _random_trim(motion, sample_length: int, rng):
-        start = rng.integers(motion.duration - sample_length)
+        start = rng.integers(motion.duration - sample_length + 1)
         end = start + sample_length
         sample = motion.clip(start, end)
         return sample
@@ -66,6 +66,9 @@ class DataLoader:
             samples.append(self._random_trim(self.motions[idx[i]], sample_length, rng[i]))
 
         return samples
+
+    def get_sample(self, key, start, end):
+        return self.motions[key].clip(start, end)
 
     def get_hierarchy(self):
         motion = self._lazy_load(self.motions, self.data, 0)

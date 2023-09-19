@@ -8,7 +8,7 @@ from anim_data.dataloader import DataLoader
 from models.inpainter import Inpainter
 
 
-class DirectorTrainer:
+class CITLTrainer:
     def __init__(self, sample_length, batch_size, dataset, dataset_path):
         self.sample_length = sample_length
         self.batch_size = batch_size
@@ -20,7 +20,7 @@ class DirectorTrainer:
             excluded_joints = ["LeftToeBase_end", "RightToeBase_end", "Head_end", "LeftToeBase", "RightToeBase",
                                "LeftFingerBase", "LeftHandIndex1", "LeftHandIndex1_end", "LThumb", "LThumb_end",
                                "RightFingerBase", "RightHandIndex1", "RightHandIndex1_end", "RThumb", "RThumb_end"]
-            self.p_scale = 2.54 / 0.45 / 64.50309367
+            self.p_scale = 0.056444
         elif dataset == 'lafan':
             excluded_joints = ["LeftToe_end", "RightToe_end", "Head_end", "LeftHand_end", "RightHand_end"]
             self.p_scale = 0.02
@@ -32,8 +32,8 @@ class DirectorTrainer:
                                device=self.device) * self.p_scale
 
         self.inpainter = Inpainter(embed_size=512, joints=joints, hierarchy=self.data.get_hierarchy(),
-                                   offsets=offsets, features=7, max_length=120,
-                                   heads=8, key_layers=8, interm_layers=8, dec_layers=8, dropout=0, device=self.device)
+                                   offsets=offsets, features=7, max_length=sample_length,
+                                   heads=8, key_layers=8, interm_layers=8, dec_layers=8, dropout=0.1, device=self.device)
         self.inpainter.train()
 
         self.lr = 0.004
@@ -62,7 +62,7 @@ class DirectorTrainer:
             input_tensors.append(torch.cat((data_p, data_q), dim=-1))
 
             # random keyframes
-            perm = torch.randperm(self.sample_length - 2)[:n_keys] + 1
+            perm = torch.randperm(self.sample_length - 2)[:n_keys - 2] + 1
             keyframes.append(perm)
 
         motions = torch.cat(input_tensors, dim=0).contiguous()
@@ -72,8 +72,7 @@ class DirectorTrainer:
         motions[..., :3] = glob_p
 
         keyframes = torch.stack(keyframes, dim=0)
-        keyframes[..., 0] = 0
-        keyframes[..., -1] = self.sample_length - 1
+        keyframes = torch.cat([torch.zeros(batches, 1), keyframes, torch.full((batches, 1), self.sample_length - 1)], dim=-1).type(torch.int64)
         keyframes, _ = torch.sort(keyframes, dim=-1)
 
         keyframe_idx = torch.repeat_interleave(keyframes.unsqueeze(-1), 3, dim=-1).to(self.device)
@@ -81,11 +80,9 @@ class DirectorTrainer:
 
         root_means = torch.mean(roots, dim=1, keepdim=True).unsqueeze(-2)
         motions[..., :3] -= root_means
-        # _motions = torch.reshape(motions, (batches, frames, -1))
 
         keyframe_idx = torch.reshape(keyframes, (*keyframes.shape, 1, 1)).repeat(1, 1, *motions.shape[-2:]).to(self.device)
 
-        # keyframe_idx = torch.repeat_interleave(keyframes.unsqueeze(-1), _motions.shape[-1], dim=-1).to(self.device)
         keyposes = torch.gather(motions, 1, keyframe_idx).clone().contiguous()
 
         return keyposes, keyframes, motions[..., :3], motions[..., 3:], glob_q
@@ -109,7 +106,6 @@ class DirectorTrainer:
             loss = l_quat + l_root + (l_pos + l_quat_global) * global_mul
 
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(self.inpainter.parameters(), 1.0)
             self.optim.step()
 
             with torch.no_grad():
@@ -120,8 +116,9 @@ class DirectorTrainer:
                       (ep, l_pos.item(), l_root.item(), l_quat.item(), l_quat_global.item(), l2p.item(), l2q.item()))
 
             if ep % 100 == 0:
-                self.inpainter.save_models("./saves/Epoch%d.pt" % ep)
                 self.data.restart_pool()
+            if ep % 5000 == 0:
+                self.inpainter.save_models("./saves/Epoch%d.pt" % ep)
 
             self.steps += 1
 
@@ -130,5 +127,5 @@ if __name__ == "__main__":
     dataset = sys.argv[1]
     dataset_path = sys.argv[2]
 
-    trainer = DirectorTrainer(sample_length=120, batch_size=64, dataset=dataset, dataset_path=dataset_path)
-    trainer.train(30000)
+    trainer = CITLTrainer(sample_length=128, batch_size=64, dataset=dataset, dataset_path=dataset_path)
+    trainer.train(50000)
